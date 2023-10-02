@@ -1,0 +1,5 @@
+venv
+main.py
+pipylib/API_ENDPOINT.txt
+pipylib/__pycache__
+.idea/
