@@ -15,10 +15,10 @@ API_ENDPOINT = os.environ["API_ENDPOINT"]
 
 
 def pi_sync_get_alarms_list(name_filter, max_count=3000):
-    '''
-    API request from PI database, returns a list of alarms that matchs with the nameFilter. 
+    """
+    API request from PI database, returns a list of alarms that matches with the nameFilter.
     Each point of the list as a JSON.
-    '''
+    """
 
     parameters = {
         "nameFilter": name_filter,
@@ -38,16 +38,23 @@ def pi_sync_get_alarms_list(name_filter, max_count=3000):
 
 
 def format_timestamp(timestamp):
-    '''Internal function'''
+    """Internal function"""
     # Remove the "Z" at the end and one decimal digit because timestamp only handles microseconds (6 decimals)
-    timestamp = timestamp[:-2]
+    if "." in timestamp:
+        after_comma_length = len(timestamp.split(".")[1])
+        if after_comma_length > 3:
+            timestamp = timestamp[:-2]
+        else:
+            timestamp = timestamp[:-1]
+    else:
+        timestamp = timestamp[:-1] + ".0"
     timestamp = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%f")
     local_date_time = timestamp - timedelta(hours=3)
     return local_date_time
 
 
 def find_voltage(pi_query):
-    '''Internal function'''
+    """Internal function"""
     try:
         kv_index = pi_query["Descriptor"].split(" ")
         kv_index = kv_index.index("kV")
@@ -57,7 +64,7 @@ def find_voltage(pi_query):
 
 
 def find_equipment_type(pi_query):
-    '''Internal function'''
+    """Internal function"""
     try:
         descriptor = pi_query["Descriptor"].split("|")[1]
     except IndexError:
@@ -77,13 +84,12 @@ def find_equipment_type(pi_query):
             if value in descriptor.lower():
                 found = True
                 return equipment
-                break
     if not found:
         return "Not defined"
 
 
 def get_converted_alarms(name_filter, max_count=3000, exclude_borr=True):
-    '''This function returns a list of alarms already converted to PI_point objects'''
+    """This function returns a list of alarms already converted to PI_point objects"""
     alarms = pi_sync_get_alarms_list(name_filter=name_filter, max_count=max_count)
     alarms = [PIPoint(alarm) for alarm in alarms]
     if exclude_borr:
@@ -175,10 +181,10 @@ def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True
 
 
 class PIPoint:
-    '''
-    This class provides methods and attributes that make easier to handle signals from the DB. 
+    """
+    This class provides methods and attributes that make easier to handle signals from the DB.
     Mainly focused on digital signals but still handles floats.
-    '''
+    """
 
     def __init__(self, pi_query):
         self.name = pi_query["Name"]
@@ -187,7 +193,6 @@ class PIPoint:
         self.source = pi_query["Path"].split("_")[0][-3:].lower()
         self.point_class = pi_query["PointClass"]
         self.point_type = pi_query["PointType"]
-        self.is_cb_position = True if "estado del interruptor" in pi_query["Descriptor"].lower() else False
         self.reduced_descriptor = " | ".join(pi_query["Descriptor"].split(" | ")[1:-1])
         self.first_descriptor = pi_query["Descriptor"].split(" | ")[0]
         self.station = pi_query["Descriptor"].split(" | ")[-1]
@@ -199,8 +204,8 @@ class PIPoint:
         self.data = None
 
     def get_endvalue(self):
-        '''Returns the last point the DB has, NOT the last shift.
-        Returned data has Timestamp, Value and Name.'''
+        """Returns the last point the DB has, NOT the last shift.
+        Returned data has Timestamp, Value and Name."""
         try:
             response = requests.get(url=self.end_value, verify=False)
             response.raise_for_status()
@@ -224,12 +229,12 @@ class PIPoint:
                     "Name": data["Value"]["Name"]
                 }
         finally:
-            return data
+            self.data = data
 
     def get_recorded_data(self, start_time="*-3d", end_time="*-0d", max_count=1000, dataframe=False):
-        '''
+        """
         Returns the recorded data for a given amount of days back.
-        
+
         :param dataframe: If true the data is returned as a pandas dataframe, if false as a list of dictionaries.
         :param max_count: Maximum amount of points that can be returned.
         :param days_back_start: Amount of days back to start requesting data.
@@ -244,7 +249,7 @@ class PIPoint:
             "Today" (Today at 00:00)
             "T-3d"
             "Yesterday + 03:45:30.25"
-        '''
+        """
 
         parameters = {
             "startTime": start_time,
@@ -264,10 +269,22 @@ class PIPoint:
             for item in data:
                 formatted_timestamp = format_timestamp(timestamp=item["Timestamp"])
                 if "float" in self.point_type.lower():
-                    # In this case the signal is a measurment of analog magnitudes such as current or voltage
+                    # In this case the signal is a measurement of analog magnitudes such as current or voltage
                     new_item = {
                         "Timestamp": formatted_timestamp,
                         "Value": item["Value"]
+                    }
+                elif "string" in self.point_type.lower():
+                    new_field = item["Value"].split(" | ")
+                    new_item = {
+                        "Timestamp": formatted_timestamp,
+                        "FullName": item["Value"],
+                        "Station": new_field[0],
+                        "Descriptor": new_field[1],
+                        "Variable": new_field[2],
+                        "Value": new_field[3],
+                        "Path": new_field[4],
+                        "Index": new_field[5]
                     }
                 else:
                     # It's a digital signal like an alarm
@@ -280,4 +297,5 @@ class PIPoint:
         finally:
             if dataframe:
                 formated_data = pd.DataFrame(formated_data)
-            return formated_data
+            self.data = formated_data
+
