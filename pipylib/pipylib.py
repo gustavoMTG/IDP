@@ -7,6 +7,8 @@ import urllib3
 from datetime import datetime, timedelta
 import pandas as pd
 import os
+import json
+
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -180,6 +182,51 @@ def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True
         return styled_df
 
 
+def batch_request(signals, start_time, end_time, max_count=3000):
+    """
+    This method handles the PI Web API batch controller. By passing a signals list of PIPoint objects
+    it will perform the requests in a single large request and store it in the data attribute of each signal.
+    :param signals: List of signals with PIPoint objects
+    :param start_time: Date like string e.g. 12/09/2023
+    :param end_time: As start_time
+    :param max_count: Maximum number of data to be returned by each signal
+    :return: Nothing
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "X-Requested-With": "application/json"
+    }
+    raw_body = {}
+    for signal in signals:
+        raw_body[signal.path] = {
+            "Method": "GET",
+            "Resource": signal.recorded_data,
+            "Content": f"{{'startTime': '{start_time}', 'endTime': '{end_time}', 'maxCount': '{max_count}'}}"
+        }
+
+    try:
+        response = requests.post(url="https://172.22.10.218/PIWebApi/batch/", headers=headers, json=raw_body, verify=False)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as error:
+        print(f"Error ocurred: {error}")
+    else:
+        datas = response.json()
+        for signal in signals:
+            # For HTTP status code in 200 range, the data is valid
+            if 200 <= datas[signal.path]["Status"] <= 299:
+                signal.data = datas[signal.path]["Content"]["Items"]
+                try:
+                    # Discard unnecessary data
+                    signal.data = [{"Timestamp": format_timestamp(data["Timestamp"]),
+                                    "Value": data["Value"]["Value"],
+                                    "Name": data["Value"]["Name"]}
+                                   for data in signal.data]
+                except TypeError:
+                    pass
+            else:
+                signal.data = []
+
+
 class PIPoint:
     """
     This class provides methods and attributes that make easier to handle signals from the DB.
@@ -278,13 +325,12 @@ class PIPoint:
                     new_field = item["Value"].split(" | ")
                     new_item = {
                         "Timestamp": formatted_timestamp,
-                        "FullName": item["Value"],
+                        "Index": new_field[5],
                         "Station": new_field[0],
                         "Descriptor": new_field[1],
                         "Variable": new_field[2],
                         "Value": new_field[3],
                         "Path": new_field[4],
-                        "Index": new_field[5]
                     }
                 else:
                     # It's a digital signal like an alarm
