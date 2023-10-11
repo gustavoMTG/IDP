@@ -122,7 +122,7 @@ def get_converted_alarms(name_filter, max_count=3000, exclude_borr=True):
     return alarms
 
 
-def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True):
+def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True, batch=False):
     """
     Generates a dataframe ordered by timestamps and colors it according to triggers, reclosure commands and breakers positions.
     :param signals: A list of the signals that will be taken into account.
@@ -172,12 +172,23 @@ def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True
     signals = [signal for signal in signals if signal.point_type.lower() == "digital"]
 
     # This portion of the code could improve with async requests
-    batch_request(signals, start_time, end_time)
-    dfs_list = [df_treatment(
-        dataframe=pd.DataFrame(signal.data),
-        station=signal.station,
-        descriptor=signal.descriptor,
-        source=signal.source) for signal in signals]
+    # This if statement keeps backward compatibility with the previous request method get_recorded
+    if batch:
+        batch_request(signals, start_time, end_time)
+        dfs_list = [df_treatment(
+            dataframe=pd.DataFrame(signal.data),
+            station=signal.station,
+            descriptor=signal.descriptor,
+            source=signal.source) for signal in signals]
+    else:
+        dfs_list = [df_treatment(
+            dataframe=signal.get_recorded_data(
+                start_time=start_time,
+                end_time=end_time,
+                dataframe=True),
+            station=signal.station,
+            descriptor=signal.descriptor,
+            source=signal.source) for signal in signals]
 
     dfs_list = [df_ for df_ in dfs_list if "Name" in list(df_.columns)]
 
