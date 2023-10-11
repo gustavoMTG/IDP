@@ -149,11 +149,9 @@ def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True
     signals = [signal for signal in signals if signal.point_type.lower() == "digital"]
 
     # This portion of the code could improve with async requests
+    batch_request(signals, start_time, end_time)
     dfs_list = [df_treatment(
-        dataframe=signal.get_recorded_data(
-            start_time=start_time,
-            end_time=end_time,
-            dataframe=True),
+        dataframe=pd.DataFrame(signal.data),
         station=signal.station,
         descriptor=signal.descriptor,
         source=signal.source) for signal in signals]
@@ -308,11 +306,11 @@ class PIPoint:
             response.raise_for_status()
         except requests.exceptions.RequestException as error:
             print(f"Error ocurred: {error}")
-            formated_data = []
+            formatted_data = []
         else:
             data = response.json()
             data = data["Items"]
-            formated_data = []
+            formatted_data = []
             for item in data:
                 formatted_timestamp = format_timestamp(timestamp=item["Timestamp"])
                 if "float" in self.point_type.lower():
@@ -339,9 +337,9 @@ class PIPoint:
                         "Value": item["Value"]["Value"],
                         "Name": item["Value"]["Name"]
                     }
-                formated_data.append(new_item)
+                formatted_data.append(new_item)
         finally:
             if dataframe:
-                formated_data = pd.DataFrame(formated_data)
-            self.data = formated_data
+                formatted_data = pd.DataFrame(formatted_data)
+            self.data = formatted_data
 
