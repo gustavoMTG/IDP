@@ -7,13 +7,36 @@ import urllib3
 from datetime import datetime, timedelta
 import pandas as pd
 import os
-import json
+import math
 
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Set the API endpoint as environment variable
 API_ENDPOINT = os.environ["API_ENDPOINT"]
+
+
+def batch_signals_segmentation(signals: list, max_batch=999) -> list:
+    """
+    Since PIWebAPI batch controller is limited to 999 elements, this method segments the list of signals to query into
+    lists of a maximum length of 999 elements each.
+    :param signals:
+    :return:
+    """
+    length = len(signals)
+    if length > max_batch:
+        required_divisons = math.ceil(length / max_batch)
+        segmented_signals = []
+        for division in range(1, required_divisons + 1):
+            index_start = max_batch * (division - 1)
+            index_end = max_batch * division
+            if division != required_divisons:
+                segmented_signals.append(signals[index_start:index_end])
+            else:
+                segmented_signals.append(signals[index_start:])
+        return segmented_signals
+    else:
+        return signals
 
 
 def pi_sync_get_alarms_list(name_filter, max_count=3000):
@@ -180,7 +203,7 @@ def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True
         return styled_df
 
 
-def batch_request(signals, start_time, end_time, max_count=3000):
+def batch_request(signals, start_time="*-3d", end_time="*-0d", max_count=3000):
     """
     This method handles the PI Web API batch controller. By passing a signals list of PIPoint objects
     it will perform the requests in a single large request and store it in the data attribute of each signal.
