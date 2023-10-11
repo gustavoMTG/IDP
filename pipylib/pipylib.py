@@ -13,6 +13,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Set the API endpoint as environment variable
 API_ENDPOINT = os.environ["API_ENDPOINT"]
+BATCH_ENDPOINT = os.environ["BATCH_ENDPOINT"]
 
 
 def batch_signals_segmentation(signals: list, max_batch=999) -> list:
@@ -236,7 +237,7 @@ def batch_request(signals, start_time="*-3d", end_time="*-0d", max_count=3000):
         }
 
     try:
-        response = requests.post(url="https://172.22.10.218/PIWebApi/batch/", headers=headers, json=raw_body,
+        response = requests.post(url=BATCH_ENDPOINT, headers=headers, json=raw_body,
                                  verify=False)
         response.raise_for_status()
     except requests.exceptions.RequestException as error:
