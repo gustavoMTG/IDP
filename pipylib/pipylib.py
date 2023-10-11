@@ -9,7 +9,6 @@ import pandas as pd
 import os
 import math
 
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Set the API endpoint as environment variable
@@ -122,7 +121,7 @@ def get_converted_alarms(name_filter, max_count=3000, exclude_borr=True):
     return alarms
 
 
-def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True, batch=False):
+def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True, batch=False, max_batch=999):
     """
     Generates a dataframe ordered by timestamps and colors it according to triggers, reclosure commands and breakers positions.
     :param signals: A list of the signals that will be taken into account.
@@ -174,21 +173,18 @@ def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True
     # This portion of the code could improve with async requests
     # This if statement keeps backward compatibility with the previous request method get_recorded
     if batch:
-        batch_request(signals, start_time, end_time)
-        dfs_list = [df_treatment(
-            dataframe=pd.DataFrame(signal.data),
-            station=signal.station,
-            descriptor=signal.descriptor,
-            source=signal.source) for signal in signals]
+        segmented_signals = batch_signals_segmentation(signals, max_batch)
+        for signals_ in segmented_signals:
+            print(f"Batch segmentation: {len(signals_)}")
+            batch_request(signals_, start_time, end_time)
     else:
-        dfs_list = [df_treatment(
-            dataframe=signal.get_recorded_data(
-                start_time=start_time,
-                end_time=end_time,
-                dataframe=True),
-            station=signal.station,
-            descriptor=signal.descriptor,
-            source=signal.source) for signal in signals]
+        for signal in signals:
+            signal.get_recorded_data(start_time, end_time)
+    dfs_list = [df_treatment(
+        dataframe=pd.DataFrame(signal.data),
+        station=signal.station,
+        descriptor=signal.descriptor,
+        source=signal.source) for signal in signals]
 
     dfs_list = [df_ for df_ in dfs_list if "Name" in list(df_.columns)]
 
@@ -232,12 +228,16 @@ def batch_request(signals, start_time="*-3d", end_time="*-0d", max_count=3000):
     for signal in signals:
         raw_body[signal.path] = {
             "Method": "GET",
-            "Resource": signal.recorded_data,
+            "Resource": signal.recorded_data
+                        + "?" + f"startTime={start_time}"
+                        + "&" + f"endTime={end_time}"
+                        + "&" + f"maxCount={max_count}",
             "Content": f"{{'startTime': '{start_time}', 'endTime': '{end_time}', 'maxCount': '{max_count}'}}"
         }
 
     try:
-        response = requests.post(url="https://172.22.10.218/PIWebApi/batch/", headers=headers, json=raw_body, verify=False)
+        response = requests.post(url="https://172.22.10.218/PIWebApi/batch/", headers=headers, json=raw_body,
+                                 verify=False)
         response.raise_for_status()
     except requests.exceptions.RequestException as error:
         print(f"Error ocurred: {error}")
@@ -376,4 +376,3 @@ class PIPoint:
             if dataframe:
                 formatted_data = pd.DataFrame(formatted_data)
             self.data = formatted_data
-
