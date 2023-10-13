@@ -36,7 +36,7 @@ def batch_signals_segmentation(signals: list, max_batch=999) -> list:
                 segmented_signals.append(signals[index_start:])
         return segmented_signals
     else:
-        return signals
+        return [signals]
 
 
 def pi_sync_get_alarms_list(name_filter, max_count=3000):
@@ -211,10 +211,11 @@ def generate_table(signals: list, start_time="*-3d", end_time="*-0d", style=True
         return styled_df
 
 
-def batch_request(signals, start_time="*-3d", end_time="*-0d", max_count=3000):
+def batch_request(signals, start_time="*-3d", end_time="*-0d", end_value=False, max_count=3000):
     """
     This method handles the PI Web API batch controller. By passing a signals list of PIPoint objects
     it will perform the requests in a single large request and store it in the data attribute of each signal.
+    :param end_value:
     :param signals: List of signals with PIPoint objects
     :param start_time: Date like string e.g. 12/09/2023
     :param end_time: As start_time
@@ -227,14 +228,20 @@ def batch_request(signals, start_time="*-3d", end_time="*-0d", max_count=3000):
     }
     raw_body = {}
     for signal in signals:
-        raw_body[signal.path] = {
-            "Method": "GET",
-            "Resource": signal.recorded_data
-                        + "?" + f"startTime={start_time}"
-                        + "&" + f"endTime={end_time}"
-                        + "&" + f"maxCount={max_count}",
-            "Content": f"{{'startTime': '{start_time}', 'endTime': '{end_time}', 'maxCount': '{max_count}'}}"
-        }
+        if end_value:
+            raw_body[signal.path] = {
+                "Method": "GET",
+                "Resource": signal.end_value
+            }
+        else:
+            raw_body[signal.path] = {
+                "Method": "GET",
+                "Resource": signal.recorded_data
+                            + "?" + f"startTime={start_time}"
+                            + "&" + f"endTime={end_time}"
+                            + "&" + f"maxCount={max_count}",
+                "Content": f"{{'startTime': '{start_time}', 'endTime': '{end_time}', 'maxCount': '{max_count}'}}"
+            }
 
     try:
         response = requests.post(url=BATCH_ENDPOINT, headers=headers, json=raw_body,
@@ -247,13 +254,24 @@ def batch_request(signals, start_time="*-3d", end_time="*-0d", max_count=3000):
         for signal in signals:
             # For HTTP status code in 200 range, the data is valid
             if 200 <= datas[signal.path]["Status"] <= 299:
-                signal.data = datas[signal.path]["Content"]["Items"]
+                # print(datas[signal.path])
+                if end_value:
+                    signal.data = datas[signal.path]["Content"]
+                else:
+                    signal.data = datas[signal.path]["Content"]["Items"]
                 try:
                     # Discard unnecessary data
-                    signal.data = [{"Timestamp": format_timestamp(data["Timestamp"]),
-                                    "Value": data["Value"]["Value"],
-                                    "Name": data["Value"]["Name"]}
-                                   for data in signal.data]
+                    if end_value:
+                        signal.data = {
+                            "Timestamp": format_timestamp(signal.data["Timestamp"]),
+                            "Value": signal.data["Value"]["Value"],
+                            "Name": signal.data["Value"]["Name"]
+                        }
+                    else:
+                        signal.data = [{"Timestamp": format_timestamp(data["Timestamp"]),
+                                        "Value": data["Value"]["Value"],
+                                        "Name": data["Value"]["Name"]}
+                                       for data in signal.data]
                 except TypeError:
                     pass
             else:
