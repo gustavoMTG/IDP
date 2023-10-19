@@ -1,5 +1,29 @@
 """
-Required to set API_ENDPOINT with url as environment variable
+Required to set API_ENDPOINT with url as environment variable.
+This library is intended to make requests to PIWebAPI easier.
+
+Talking about signals is the same as a list of PIPoint objects.
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////// OVERVIEW //////////////////////////////////////////////////////////
+
+The core component of this library is the PIPoint class. This class will store data as attributes for each signal and
+also has methods to request data for each signal. Inside It there are two methods, get_recorded_data to request a list
+of points, each with value, name and timestamp, and get_end_value which doesn't require arguments since it will only
+retrieve as the name implies, the last value.
+
+get_converted_alarms returns a list of PIPoint signals that match the name_filter argument, name_filter takes string
+arguments the same way we query PIVision e.g. CAZ_RODUR*.VALOR.
+
+Once we have a list of PIPoint signals, we can ask for it's data by two approaches:
+- We can loop the list and use get_recorded_data or get_end_value to get the data. Both methods return None, the
+retrieved data is stored in the data attribute of each signal.
+- Second approach is to use the batch controller, but it requires to first segment the signals with
+batch_signals_segmentation().
+Batch controller can make multiple requests at once, minimizing the amount of requests sent to the server.
+
+generate table takes a list of signals and will return a styled pandas dataframe with the signals we are interested
+highlighted.
 """
 
 import requests
@@ -11,7 +35,7 @@ import math
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Set the API endpoint as environment variable
+# Set the API endpoint as environment variables or replace these two lines with the routes as strings
 API_ENDPOINT = os.environ["API_ENDPOINT"]
 BATCH_ENDPOINT = os.environ["BATCH_ENDPOINT"]
 
